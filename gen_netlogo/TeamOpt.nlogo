@@ -1,27 +1,49 @@
-extensions [csv]
+extensions [csv matrix]
+breed [groups group]
 globals [
  dataR
  dataS
- addrR
- addrS
+ matrixR
  Workers
  Projects
  generation_size
+ mutation-prob
  best-var
+ gene-temp
+ best-chromosome
+ best-fitness
+ tournament-size
 ]
-turtles-own [
+groups-own [
  chromosome
  fitness
 ]
 
 to setup
   clear-all
+  reset-ticks
   read-csv
-  create-turtles Population_size [
-   comp-fitness
+  init-glob
+  create-groups population-size [
+    set chromosome n-values Workers [create-gene]
    hide-turtle
   ]
-  reset-ticks
+  calc-fitness
+  let best-group max-one-of groups [fitness]
+  ask best-group [
+    set best-chromosome chromosome
+    set best-fitness fitness
+    output-print (word "generation " ticks ":")
+    output-print (word "  best fitness = " fitness)
+    output-print (word "  best group: " chromosome)
+  ]
+
+  plot-pen-up
+  set-plot-y-range (precision best-fitness 0) (precision best-fitness 0) + 1
+  set-plot-x-range 0 ticks + 10
+  plot best-fitness
+  plot-pen-down
+
 end
 
 to read-csv
@@ -61,22 +83,126 @@ to read-csv
     set dataS csv:from-file "/dataset/SM7.csv"
   ]
   set Workers length dataS
-  set Projects length dataR
+  set Projects length item 1 dataR
+  set MatrixR matrix:from-row-list dataR
   set generation_size int ( Kgen * Workers * log Projects 2 )
+end
+to init-glob
+  set mutation-prob 1 / population-size
+  set tournament-size 2
 end
 
 
 to go
   next-gen
+  calc-fitness
+  let best-group max-one-of groups [fitness]
+  ask best-group [
+    set best-chromosome chromosome
+    set best-fitness fitness
+    output-print (word "generation " (ticks + 1) ":")
+    output-print (word "  best fitness = " fitness)
+    output-print (word "  best strategy: " chromosome)
+  ]
   tick
 end
 
-to comp-fitness
+to go-gen
+  if ticks < generation_size [go]
+end
+
+to test
+  print chromosome
+  print cohesion chromosome
+  print max cohesion chromosome
+end
+
+to calc-fitness
+  foreach sort groups [ current-group ->
+   ask current-group [
+     set fitness max cohesion chromosome
+    ]
+  ]
+end
+
+to-report cohesion [Am]
+  report n-values Projects [i -> (g-eff Am i) * ((col-sum dataR i) / Workers)]
+
+end
+
+to-report g-eff [Am k]
+  let Em 0
+  let i 0
+  while [i < Workers] [
+
+   let j 0
+    while [j < Workers] [
+     let A1 item k item i Am
+     let A2 item k item j Am
+     let S1 item j item i dataS
+     set Em Em + (A1 * A2 * S1)
+     set j j + 1
+    ]
+   set i i + 1
+  ]
+  report Em / (col-sum dataR k)
+end
+
+to-report col-sum [mat col]
+  let res 0
+  let i 0
+  while [i < length mat] [
+    set res res + item col item i mat
+    set i i + 1
+  ]
+  report res
+end
+
+to constr
 
 end
 
 to next-gen
+  let old-generation (turtle-set groups)
+  let crossover-count population-size / 2
+  repeat crossover-count [
+   let parent1 max-one-of (n-of tournament-size old-generation) [fitness]
+   let parent2 max-one-of (n-of tournament-size old-generation) [fitness]
+   let child-chromosomes crossover ([chromosome] of parent1) ([chromosome] of parent2)
+    ask parent1 [
+      hatch 1 [
+        set chromosome item 0 child-chromosomes
+      ]
+    ]
+    ask parent2 [
+      hatch 1 [
+        set chromosome item 1 child-chromosomes
+       ]
+    ]
+  ]
+  ask old-generation [ die ]
+  ask groups [ mutate ]
+end
 
+to-report create-gene
+  set gene-temp random Projects
+  report n-values Projects [i -> ifelse-value i = gene-temp [1][0]]
+end
+
+to mutate
+  set chromosome map [ i ->
+    ifelse-value random-float 1 < mutation-prob
+      [create-gene]
+      [i]
+  ] chromosome
+end
+
+to-report crossover [chromosome1 chromosome2]
+  let split-point 1 + random (length chromosome1 - 1)
+  report list (sentence (sublist chromosome1 0 split-point)
+                        (sublist chromosome2 split-point length chromosome2))
+              (sentence (sublist chromosome2 0 split-point)
+                        (sublist chromosome1 split-point length chromosome1))
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -145,8 +271,8 @@ BUTTON
 63
 175
 96
-NIL
-go
+go-gen
+go-gen
 T
 1
 T
@@ -165,7 +291,7 @@ CHOOSER
 dataset
 dataset
 1 2 3 4 5 6 7
-0
+4
 
 MONITOR
 28
@@ -206,11 +332,11 @@ HORIZONTAL
 
 SLIDER
 16
-292
+331
 188
-325
-Population_size
-Population_size
+364
+population-size
+population-size
 1
 200
 50.0
@@ -221,11 +347,11 @@ HORIZONTAL
 
 SLIDER
 16
-327
+366
 188
-360
-crossover_prob
-crossover_prob
+399
+crossover-prob
+crossover-prob
 0.01
 1
 0.2
@@ -235,11 +361,11 @@ NIL
 HORIZONTAL
 
 MONITOR
-55
-241
-156
-286
-NIL
+35
+238
+175
+283
+Number of generations
 generation_size
 17
 1
@@ -252,16 +378,34 @@ PLOT
 382
 Fitness
 generation
-score
+Best Fitness
 0.0
-100.0
+1000.0
 0.0
-300.0
+1.5
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot count turtles"
+"best" 1.0 0 -16777216 true "" "plot best-fitness"
+
+MONITOR
+60
+285
+148
+330
+Mutation rate
+mutation-prob
+17
+1
+11
+
+OUTPUT
+11
+409
+949
+645
+9
 
 @#$#@#$#@
 ## WHAT IS IT?
